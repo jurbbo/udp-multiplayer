@@ -1,10 +1,11 @@
-use crate::client::Client;
+use crate::client::client::Client;
 use crate::client::RequestEvents;
 use crate::requests::jobtype::JobType;
 use std::io::stdin;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use std::time::Duration;
 
 /*
 impl RequestEvents for Client {
@@ -35,7 +36,7 @@ struct Eventful {
 }
 
 impl RequestEvents for Eventful {
-    fn handle_data(&mut self, request: JobType, raw_data: &mut [u8]) {
+    fn on_data_push_action(&mut self, raw_data: Vec<u8>) {
         println!(
             "data events {} {}.. count {}",
             raw_data[0], raw_data[1], self.count
@@ -43,8 +44,23 @@ impl RequestEvents for Eventful {
         self.count += 1;
     }
 
-    fn handle_ping(&mut self, _: std::time::Instant) {
+    fn on_pong(&mut self, time: Duration) {
         todo!()
+    }
+    fn on_data_push_received(&mut self, player: u8, raw_data: Vec<u8>) {
+        println!("Received from player {}", player);
+    }
+    fn on_data_request(&mut self, _: std::vec::Vec<u8>) {
+        todo!()
+    }
+    fn on_player_enter(&mut self, _: u8, _: std::vec::Vec<u8>) {
+        todo!()
+    }
+    fn on_player_leave(&mut self, _: std::vec::Vec<u8>) {
+        todo!()
+    }
+    fn on_error(&mut self) {
+        println!("UDP ERROR!!!");
     }
 }
 
@@ -95,7 +111,7 @@ pub fn testclient() {
 
     let mut client = Client::new(&local_ip, "localhost:11111", 3, handle_data_cb);
     let events = Arc::new(Mutex::new(Eventful { count: 0 }));
-    client.runn(events);
+    client.run(events);
 
     println!("Pause between data grams: ");
     let mut pause_time = String::new();
