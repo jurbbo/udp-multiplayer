@@ -17,4 +17,11 @@ pub trait RequestEvents {
     fn on_error(&mut self);
     fn on_connection_state_change(&mut self, new_state: bool);
 }
+
+pub fn run<S: 'static>(client: &mut Client, events: Arc<Mutex<S>>)
+where
+    S: RequestEvents + Send + Sync,
+{
+    client.init_job_handler();
+    client.init_listeners(events);
 }
