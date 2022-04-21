@@ -2,10 +2,14 @@ use crate::client::Arc;
 use crate::client::Mutex;
 use crate::client::RequestEvents;
 use crate::client::UdpSocket;
+use crate::protocol::datastructure::get_u8_from_bit_slice;
 use crate::requests::jobs::Jobs;
-use crate::requests::jobtype::{tranfer_job_type_from_number, JobType};
+use crate::requests::jobtype::get_job_type;
+use crate::requests::jobtype::JobType;
+use crate::requests::jobtype::ServerJob;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::thread;
 use std::time::Duration;
 
 pub struct SocketListener<S: 'static> {
@@ -13,14 +17,18 @@ pub struct SocketListener<S: 'static> {
     time_to_die: Arc<AtomicBool>,
     socket: Arc<UdpSocket>,
     events: Arc<Mutex<S>>,
+    error_state_current: Arc<AtomicBool>,
+    error_state_previous: Arc<AtomicBool>,
 }
 
-impl<S: RequestEvents + std::marker::Send + std::marker::Sync> SocketListener<S> {
+impl<S: RequestEvents + Send + Sync> SocketListener<S> {
     pub fn new(
         jobs: &Arc<Mutex<Jobs>>,
         socket: &Arc<UdpSocket>,
         time_to_die: &Arc<AtomicBool>,
         events: &Arc<Mutex<S>>,
+        error_state_current: &Arc<AtomicBool>,
+        error_state_previous: &Arc<AtomicBool>,
     ) -> SocketListener<S>
     where
         S: RequestEvents + Send + Sync,
@@ -30,6 +38,8 @@ impl<S: RequestEvents + std::marker::Send + std::marker::Sync> SocketListener<S>
             socket: Arc::clone(socket),
             time_to_die: Arc::clone(time_to_die),
             events: Arc::clone(events),
+            error_state_current: Arc::clone(error_state_current),
+            error_state_previous: Arc::clone(error_state_previous),
         }
     }
 
@@ -40,7 +50,28 @@ impl<S: RequestEvents + std::marker::Send + std::marker::Sync> SocketListener<S>
                 break;
             }
 
-            let raw_data = self.read_socket();
+            let raw_data_maybe = self.read_socket();
+
+            // if conenction state has changed, raise event.
+            if self.error_state_current.load(Ordering::SeqCst)
+                != self.error_state_previous.load(Ordering::SeqCst)
+            {
+                self.error_state_previous.store(
+                    self.error_state_current.load(Ordering::SeqCst),
+                    Ordering::SeqCst,
+                );
+                let mut events_changer = self.events.lock().unwrap();
+                (*events_changer)
+                    .on_connection_state_change(self.error_state_current.load(Ordering::SeqCst));
+            }
+
+            // Thread sleeps 1 second, if connection is lost...
+            if raw_data_maybe.is_none() {
+                thread::sleep(Duration::new(1, 0));
+                continue;
+            }
+            // Data is received, lets work on it.
+            let raw_data = raw_data_maybe.unwrap();
 
             let index_and_type_maybe = self.get_index_and_type(&raw_data);
 
@@ -50,20 +81,29 @@ impl<S: RequestEvents + std::marker::Send + std::marker::Sync> SocketListener<S>
             }
 
             let (job_index, job_type) = index_and_type_maybe.unwrap();
-            // data is received, lets work on it.
-
-            self.handle_data(job_index, job_type, raw_data);
+            self.create_request_event(job_index, job_type.0, raw_data);
         }
     }
-    fn read_socket(&self) -> Vec<u8> {
+
+    // Read socket, blocking function, return None is socket read fails for connection error.
+    fn read_socket(&self) -> Option<Vec<u8>> {
         let mut buf = [0; 10];
-        let (number_of_bytes, _src_addr) = self
-            .socket
-            .recv_from(&mut buf)
-            .expect("Socket failed on receive");
+
+        let result = self.socket.recv_from(&mut buf);
+        if result.is_err() {
+            self.error_state_current.store(true, Ordering::SeqCst);
+            return None;
+        }
+
+        if self.error_state_current.load(Ordering::SeqCst) {
+            self.error_state_current.store(false, Ordering::SeqCst);
+        }
+
+        let (number_of_bytes, _src_addr) = result.unwrap();
         let raw_data = &mut buf[..number_of_bytes];
-        raw_data.to_vec()
+        Some(raw_data.to_vec())
     }
+
     fn get_index_and_type(&self, raw_data: &Vec<u8>) -> Option<(u8, JobType)> {
         if raw_data.len() < 2 {
             let mut jobs_changer = self.jobs.lock().unwrap();
