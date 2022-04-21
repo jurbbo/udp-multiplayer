@@ -1,7 +1,7 @@
 pub mod client;
-mod events;
 mod socketlistener;
 
+use crate::client::client::Client;
 use std::net::UdpSocket;
 use std::sync::Arc;
 use std::sync::Mutex;
