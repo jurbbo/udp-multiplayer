@@ -111,7 +111,13 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
             return None;
         }
         let index = raw_data[0];
-        let job_type = tranfer_job_type_from_number(&raw_data[1]);
+
+        let server_client = (
+            get_u8_from_bit_slice(raw_data[1], 0, 4),
+            get_u8_from_bit_slice(raw_data[1], 4, 4),
+        );
+
+        let job_type = get_job_type(&server_client);
         if job_type.is_none() {
             let mut jobs_changer = self.jobs.lock().unwrap();
             (*jobs_changer).packages_failed += 1;
@@ -119,15 +125,24 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
         }
         Some((index, job_type.unwrap()))
     }
-    fn handle_data(&self, job_index: u8, job_type: JobType, raw_data: Vec<u8>)
-    where
+
+    // Call implemented trait (RequestEvent) methods according
+    // what kind of (JobType) data is reveiced.
+    fn create_request_event(
+        &self,
+        job_index: u8,
+        server_response_type: ServerJob,
+        raw_data: Vec<u8>,
+    ) where
         S: RequestEvents + Send + Sync,
     {
         let mut job_duration = Duration::new(0, 0);
 
         // Job handling for operations fired from client
-        match &job_type {
-            JobType::DATA_PUSH_RECEIVED => { /* no job handling for server push operations */ }
+        match &server_response_type {
+            ServerJob::DataPush => { /* no job handling for server push operations */ }
+            ServerJob::PlayerEnterPush => { /* no job handling */ }
+            ServerJob::PlayerLeavePush => {}
             __ => {
                 let mut jobs_changer = self.jobs.lock().unwrap();
                 let job_maybe = (*jobs_changer).jobs.get_mut(&job_index);
@@ -144,12 +159,14 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
             }
         }
 
-        match &job_type {
-            JobType::DATA_PUSH_ACTION => {
+        match &server_response_type {
+            ServerJob::NoServerAction => {}
+
+            ServerJob::DataPushDoneResponse => {
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_data_push_action(raw_data);
             }
-            JobType::DATA_PUSH_RECEIVED => {
+            ServerJob::DataPush => {
                 println!("received");
                 if raw_data.len() < 3 {
                     let mut jobs_changer = self.jobs.lock().unwrap();
@@ -162,7 +179,7 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_data_push_received(player, raw_data);
             }
-            JobType::DATA_REQUEST => {
+            ServerJob::DataResponse => {
                 println!("request");
                 if raw_data.len() < 4 {
                     let mut jobs_changer = self.jobs.lock().unwrap();
@@ -175,7 +192,7 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_data_push_received(player, raw_data);
             }
-            JobType::PLAYER_ENTER => {
+            ServerJob::PlayerCreatedResponse => {
                 println!("enter");
                 if raw_data.len() < 4 {
                     let mut jobs_changer = self.jobs.lock().unwrap();
@@ -188,12 +205,16 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_player_enter(player_number, raw_data);
             }
-            JobType::PLAYER_LEAVE => {
+            ServerJob::PlayerEnterPush => {
+                println!("enter");
+            }
+            ServerJob::PlayerLeavePush => {}
+            ServerJob::PlayerLeaveResponse => {
                 println!("leave");
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_player_leave(raw_data);
             }
-            JobType::PING => {
+            ServerJob::PongResponse => {
                 println!("ping");
 
                 let mut events_changer = self.events.lock().unwrap();
