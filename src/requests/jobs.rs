@@ -1,4 +1,4 @@
-use crate::requests::jobtype::{transfer_job_type_to_byte, JobType};
+use crate::requests::jobtype::{get_job_single_byte, JobType};
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -22,7 +22,7 @@ impl Job {
     ) -> Job {
         // raw_data array will be created
         // first byte is job handle, second byte is jobtype, rest is user data
-        let mut byte_array = vec![handle, transfer_job_type_to_byte(&job_type)];
+        let mut byte_array = vec![handle, get_job_single_byte(&job_type)];
         byte_array.append(raw_data);
 
         Job {
