@@ -15,4 +15,6 @@ pub trait RequestEvents {
     fn on_player_enter(&mut self, player_number: u8, raw_data: Vec<u8>);
     fn on_player_leave(&mut self, raw_data: Vec<u8>);
     fn on_error(&mut self);
+    fn on_connection_state_change(&mut self, new_state: bool);
+}
 }
