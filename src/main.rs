@@ -1,5 +1,6 @@
 mod client;
 mod params;
+mod protocol;
 mod requests;
 mod testclient;
 use params::Params;
