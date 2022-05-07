@@ -49,17 +49,17 @@ pub fn get_job_bytes(job_type: &JobType) -> (u8, u8) {
 
 pub fn get_job_single_byte(job_type: &JobType) -> u8 {
     let job_bytes = get_job_bytes(job_type);
-    println!("{}, {}", job_bytes.0, job_bytes.1);
+    //println!("{}, {}", job_bytes.0, job_bytes.1);
     create_job_type_byte(&job_bytes)
 }
 
 fn create_job_type_byte(server_client: &(u8, u8)) -> u8 {
     let (server, client) = server_client;
-    println!("{:#b}", server);
-    println!("{:#b}", client);
+    //println!("{:#b}", server);
+    //println!("{:#b}", client);
 
     let server_left_bits = server << 4;
-    println!("{:#b}", server_left_bits);
+    //println!("{:#b}", server_left_bits);
     server_left_bits | client
 }
 
