@@ -118,11 +118,12 @@ impl Server {
             let mut connection_changer = connections.lock().unwrap();
             for (ip, connection) in &mut (*connection_changer).connections {
                 println!(
-                "{} / conenctions in 10 sec {}, bytes received {}, bytes sent {}, player number {}",
+                "{} / connections in 10 sec {}, bytes received {}, bytes sent {}, player name {}, player number {}",
                 ip,
                 connection.connections_count,
                 connection.bytes_received,
                 connection.bytes_send,
+                connection.player_name,
                 connection.player_number
             );
                 (*connection).connections_count = 0;
