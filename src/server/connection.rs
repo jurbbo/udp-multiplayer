@@ -34,7 +34,14 @@ impl Connections {
         }
     }
 
-    pub fn create_new_connection(&mut self, ip: SocketAddr, player_name: String) -> bool {
+    pub fn is_ip_in_connections(&self, ip: SocketAddr) -> bool {
+        if self.connections.get(&ip).is_some() {
+            return true;
+        }
+        false
+    }
+
+    pub fn create_new_connection(&mut self, ip: SocketAddr, player_name: String) -> Option<u8> {
         for index in 1..=255 {
             let mut is_index_found = false;
             for (_ip, connection) in &self.connections {
@@ -45,9 +52,19 @@ impl Connections {
             if !is_index_found {
                 self.connections
                     .insert(ip, Connection::new(index, player_name));
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    pub fn is_name_taken(&self, name: String) -> bool {
+        for (_ip, conn) in &self.connections {
+            if conn.player_name == name {
                 return true;
             }
         }
+
         false
     }
 }
