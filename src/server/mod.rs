@@ -1,11 +1,12 @@
 pub mod connection;
 pub mod server;
+pub mod socketlistener;
 
 use crate::server::server::Server;
 
-pub fn run() {
+pub fn run(ip: String, port: String) {
     let mut server = Server::new(5);
-    let result = server.connect("127.0.0.1:11111".to_string());
+    let result = server.connect(ip + ":" + &port);
     if result.is_err() {
         println!("IP / port failed...");
         println!("{}", result.unwrap_err());
@@ -17,5 +18,5 @@ pub fn run() {
 
 pub fn test_server() {
     println!("Server starting...");
-    run();
+    run("127.0.0.1".to_string(), "11111".to_string());
 }
