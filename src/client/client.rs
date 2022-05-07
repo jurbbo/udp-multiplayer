@@ -144,7 +144,7 @@ impl Client {
         let jobs = Arc::clone(&self.jobs);
         let time_to_die = Arc::clone(&self.time_to_die);
         // worker for reading server answer starts here
-        let mut handle = vec![thread::spawn(move || loop {
+        let handle = vec![thread::spawn(move || loop {
             // break if server is closing...
             thread::sleep(Duration::from_micros(1000));
             if time_to_die.load(Ordering::SeqCst) {
