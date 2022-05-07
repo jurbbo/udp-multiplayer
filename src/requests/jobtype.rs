@@ -1,5 +1,6 @@
 pub type JobType = (ServerJob, ClientJob);
 
+#[derive(Clone)]
 pub enum ClientJob {
     NoClientAction,
     DataPushRequest,
@@ -9,6 +10,7 @@ pub enum ClientJob {
     PingRequest,
 }
 
+#[derive(Clone)]
 pub enum ServerJob {
     NoServerAction,
     DataPush,
