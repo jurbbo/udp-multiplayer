@@ -201,9 +201,11 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                     (*events_changer).on_error();
                     return;
                 }
-                let player_number = raw_data[2];
-                let mut events_changer = self.events.lock().unwrap();
-                (*events_changer).on_player_enter(player_number, raw_data);
+                if raw_data[2] == 1 {
+                    let player_number = raw_data[3];
+                    let mut events_changer = self.events.lock().unwrap();
+                    (*events_changer).on_player_created(player_number, raw_data);
+                }
             }
             ServerJob::PlayerEnterPush => {
                 println!("enter");
