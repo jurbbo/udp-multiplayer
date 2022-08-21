@@ -211,7 +211,7 @@ impl Client {
         }
         let socket = self.socket.as_ref().unwrap();
 
-        // Create job to follow up server answer.
+        // Create job to follow up server response. Send new request if job fails.
         let mut jobs_changer = self.jobs.lock().unwrap();
         let next_index = (*jobs_changer).get_next_index();
         let job_should_complite = ((*jobs_changer).job_finish_time_average * 2.0) as u128;
