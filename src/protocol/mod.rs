@@ -170,17 +170,45 @@ impl Protocol {
 "PlayerLeaveResponse",
 "PlayerLeavePush",
 "PongResponse",
-
 */
 
 fn get_default_data_protocols() -> Result<HashMap<String, DataStructureT>, ProtocolError> {
     let mut protocols = HashMap::<String, DataStructureT>::new();
+    for client_job in ClientJob::as_string() {
+        let structures: Option<DataStructureT> = match client_job {
+            "PlayerEnterRequest" => {
+                let structures = DataStructuresFactory::new()
+                    .structure("PlayerName", 15, DataType::STRINGDATAFIXEDLENGTH, None)?
+                    .get_structures();
+                Some(structures)
+            }
+            "PlayerLeaveRequest" => {
+                let structures = DataStructuresFactory::new()
+                    .structure("Index", 1, DataType::NUMBERDATA, None)?
+                    .structure("ServerClientJobByte", 1, DataType::NUMBERDATA, None)?
+                    .structure("PlayerNumber", 1, DataType::NUMBERDATA, None)?
+                    .get_structures();
+                Some(structures)
+            }
+            "DataPushRequest" => {
+                let structures = DataStructuresFactory::new()
+                    .structure("DataPushType", 1, DataType::NUMBERDATA, None)?
+                    .structure("RawData", 50, DataType::NUMBERDATA, None)?
+                    .get_structures();
+                Some(structures)
+            }
+
+            _ => None,
+        };
+        if structures.is_some() {
+            protocols.insert(client_job.to_string(), structures.unwrap());
+        }
+    }
     for server_job in ServerJob::as_string() {
         let structures: Option<DataStructureT> = match server_job {
             "PlayerCreatedResponse" => {
-                let player_created_response_structures = DataStructuresFactory::new()
-                    .structure("Index", 1, DataType::NUMBERDATA, None)?
-                    .structure("IsSuccess", 1, DataType::NUMBERDATA, None)?
+                let structures = DataStructuresFactory::new()
+                    .structure("Status", 1, DataType::NUMBERDATA, None)?
                     .structure("PlayerNumber", 1, DataType::NUMBERDATA, None)?
                     .structure("PlayerName", 15, DataType::STRINGDATAFIXEDLENGTH, None)?
                     .structure(
@@ -190,16 +218,24 @@ fn get_default_data_protocols() -> Result<HashMap<String, DataStructureT>, Proto
                         Some(
                             DataStructuresFactory::new()
                                 .structure("PlayerNumber", 1, DataType::NUMBERDATA, None)?
-                                .structure("PlayerIP", 4, DataType::NUMBERDATA, None)?
                                 .structure("PlayerName", 15, DataType::STRINGDATAFIXEDLENGTH, None)?
+                                .structure("PlayerIP", 4, DataType::NUMBERDATA, None)?
+                                .structure("PlayerPort", 2, DataType::NUMBERDATA, None)?
                                 .get_structures(),
                         ),
-                    )
-                    .expect("Factory failed")
+                    )?
                     .get_structures();
-                Some(player_created_response_structures)
+                Some(structures)
             }
-            "PlayerEnterPush" => None,
+            "PlayerEnterPush" => {
+                let structures = DataStructuresFactory::new()
+                    .structure("PlayerNumber", 1, DataType::NUMBERDATA, None)?
+                    .structure("PlayerName", 15, DataType::STRINGDATAFIXEDLENGTH, None)?
+                    .structure("PlayerIP", 4, DataType::NUMBERDATA, None)?
+                    .structure("PlayerPort", 2, DataType::NUMBERDATA, None)?
+                    .get_structures();
+                Some(structures)
+            }
             _ => None,
         };
         if structures.is_some() {
