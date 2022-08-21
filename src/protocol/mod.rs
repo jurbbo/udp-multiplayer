@@ -1,11 +1,15 @@
 pub mod bithelpers;
 pub mod builders;
+pub mod datahelpers;
 pub mod datastructure;
 use crate::protocol::builders::DataStructuresFactory;
+use crate::protocol::datahelpers::get_protocol_total_length;
 use crate::protocol::datastructure::DataStructure;
 use crate::protocol::datastructure::DataType;
+use crate::requests::jobtype::ClientJob;
 use crate::requests::jobtype::ServerJob;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 type DataStructureT = HashMap<String, DataStructure>;
 
@@ -96,6 +100,7 @@ impl Protocol {
                     DataType::NUMBERDATA => "Number",
                     DataType::STRINGDATA => "String, dynamic length, as last structure only",
                     DataType::STRINGDATAFIXEDLENGTH => "String, fix length",
+                    DataType::RAWDATA => "Raw data, dynamic",
                 }
             );
             match structure.data_type {
@@ -115,6 +120,7 @@ impl Protocol {
                                 DataType::STRINGDATA =>
                                     "String, dynamic length, as last structure only",
                                 DataType::STRINGDATAFIXEDLENGTH => "String, fixed length",
+                                DataType::RAWDATA => "Raw data, dynamic",
                             }
                         );
                         print!("    ---------------\n");
@@ -122,6 +128,8 @@ impl Protocol {
                 }
                 _ => {}
             }
+            print!("-------------------\n");
+            print!("Total length: {} \n", get_protocol_total_length(protocol));
             print!("-------------------\n");
         }
     }
@@ -134,7 +142,6 @@ impl Protocol {
 "PlayerEnterRequest",
 "PlayerLeaveRequest",
 "PingRequest",
-
 
 "NoServerAction",
 "DataPush",
