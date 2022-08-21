@@ -243,19 +243,46 @@ impl ServerSocketListener {
                         .player_number;
                 }
 
+                // Not a registered player.
+                if player_number == 0 {
+                    return;
+                }
+
+                // create return data and job single byte for DataPush.
+                let mut dynamic_data = raw_data[2..].to_vec();
+
+                let data_string = String::from_utf8_lossy(&dynamic_data);
+                println!("data {}", data_string);
+                let mut data = vec![job_index, job_single_byte, player_number];
+                data.append(&mut dynamic_data);
+
+                // Send data to everyone but the request sender.
+                let mut connection_addresses: Vec<SocketAddr> = Vec::new();
+                for (connection_addr, _connection) in &connections_changer.connections {
+                    if *connection_addr != src_addr {
+                        connection_addresses.push(*connection_addr);
+                    }
+                }
+                for addr in connection_addresses {
+                    self.send_to_socket(addr, &data, &mut connections_changer);
+                }
+
+                /*
                 for (ip, connection) in &mut (*connections_changer).connections {
                     if ip != &src_addr {
                         let data = [job_index, job_single_byte, player_number];
-                        let result = self.socket.send_to(&data, ip);
+                        //let _result = self.socket.send_to(&data, ip);
                         connection.bytes_send += raw_data.len() as i128;
                     }
-                }
+                }*/
 
                 // Inform client that data push has been done.
                 let job: JobType = (ServerJob::DataPushDoneResponse, client_request_type);
                 let job_single_byte = get_job_single_byte(&job);
                 let data = [job_index, job_single_byte];
-                self.socket.send_to(&data, src_addr).expect("Socket fail!");
+                self.send_to_socket(src_addr, &data, &mut connections_changer);
+
+                //self.socket.send_to(&data, src_addr).expect("Socket fail!");
             }
             ClientJob::DataRequest => {
                 /*
