@@ -1,7 +1,10 @@
 pub mod client;
+pub mod datahandlers;
 mod socketlistener;
 
 use crate::client::client::Client;
+use crate::client::datahandlers::playercreatedresponse::PlayerCreatedServerError;
+use crate::client::datahandlers::structs::player::{PlayerCreatedResponseData, PlayerData};
 use std::net::UdpSocket;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -12,8 +15,11 @@ pub trait RequestEvents {
     fn on_data_push_received(&mut self, from_player: u8, raw_data: Vec<u8>);
     fn on_data_request(&mut self, raw_data: Vec<u8>);
     fn on_pong(&mut self, interval: Duration);
-    fn on_player_created(&mut self, player_number: u8, raw_data: Vec<u8>);
-    fn on_player_enter(&mut self, player_number: u8, raw_data: Vec<u8>);
+    fn on_player_created(
+        &mut self,
+        response: Result<PlayerCreatedResponseData, PlayerCreatedServerError>,
+    );
+    fn on_player_enter_push(&mut self, player: PlayerData);
     fn on_player_leave(&mut self, raw_data: Vec<u8>);
     fn on_error(&mut self);
     fn on_connection_state_change(&mut self, new_state: bool);
