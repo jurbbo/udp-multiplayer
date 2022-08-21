@@ -7,6 +7,7 @@ pub enum DataType {
     STRINGDATAFIXEDLENGTH,
     NUMBERDATA,
     ARRAY,
+    RAWDATA,
 }
 
 #[derive(Debug, std::cmp::PartialEq)]
@@ -337,6 +338,7 @@ impl<'protocol> StructuredData<'protocol> {
                     DataType::NUMBERDATA => "Number",
                     DataType::STRINGDATA => "String, dynamic length, as last structure only",
                     DataType::STRINGDATAFIXEDLENGTH => "String, fix length",
+                    DataType::RAWDATA => "Raw data, dynamic",
                 }
             );
             match structure.data_type {
@@ -356,6 +358,7 @@ impl<'protocol> StructuredData<'protocol> {
                                 DataType::STRINGDATA =>
                                     "String, dynamic length, as last structure only",
                                 DataType::STRINGDATAFIXEDLENGTH => "String, fixed length",
+                                DataType::RAWDATA => "Raw data, dynamic",
                             }
                         );
                         print!("    ---------------\n");

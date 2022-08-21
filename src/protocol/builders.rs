@@ -227,6 +227,7 @@ impl DataStructuresFactory {
             match structure.data_type {
                 DataType::STRINGDATA => return true,
                 DataType::ARRAY => return true,
+                DataType::RAWDATA => return true,
                 _ => {}
             }
         }
