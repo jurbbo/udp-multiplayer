@@ -1,6 +1,7 @@
-use crate::protocol::datastructure::get_u8_from_bit_slice;
+use crate::protocol::bithelpers::get_u8_from_bit_slice;
+use crate::protocol::datahelpers::{create_player_created_response, create_player_enter_push};
+use crate::protocol::Protocol;
 use crate::requests::jobs::Jobs;
-use crate::requests::jobtype::get_job_bytes;
 use crate::requests::jobtype::get_job_single_byte;
 use crate::requests::jobtype::get_job_type;
 use crate::requests::jobtype::ClientJob;
@@ -312,13 +313,73 @@ impl ServerSocketListener {
                     return;
                 }
 
-                println!("'{}' entered as {}", player_name, player_number.unwrap());
-
-                let job: JobType = (ServerJob::PlayerCreatedResponse, client_request_type);
+                let job: JobType = (
+                    ServerJob::PlayerCreatedResponse,
+                    client_request_type.clone(),
+                );
                 let job_single_byte = get_job_single_byte(&job);
-                let data = [job_index, job_single_byte, 1, player_number.unwrap()];
-                self.send_to_socket(src_addr, &data, &mut connections_changer);
+                //let data = [job_index, job_single_byte, 1, player_number.unwrap()];
 
+                // let's create player created response. With array data
+                // of other players, names, numbers, ips.
+                let raw_data_result = create_player_created_response(
+                    &self.protocols,
+                    1,
+                    player_name.to_string(),
+                    player_number.unwrap(),
+                    &connections_changer.connections,
+                );
+
+                if raw_data_result.is_ok() {
+                    let mut data = vec![job_index, job_single_byte];
+                    data.append(&mut raw_data_result.unwrap());
+                    self.send_to_socket(src_addr, &data, &mut connections_changer);
+                    // logging...
+                    println!(
+                        "'{}' entered as player number {}",
+                        player_name,
+                        player_number.unwrap()
+                    );
+                } else {
+                    // Something wrong with response builder.
+                    println!(
+                        "Failed to create player created response. Error: {}",
+                        raw_data_result.unwrap_err()
+                    );
+
+                    self.fail_package();
+                    let job: JobType = (ServerJob::PlayerCreatedResponse, client_request_type);
+                    let job_single_byte = get_job_single_byte(&job);
+                    let data = [job_index, job_single_byte, 100];
+                    self.send_to_socket(src_addr, &data, &mut connections_changer);
+                    return;
+                }
+
+                let job: JobType = (ServerJob::PlayerEnterPush, client_request_type);
+                let job_single_byte = get_job_single_byte(&job);
+
+                // Send new player information to other players.
+                let mut connection_addresses: Vec<SocketAddr> = Vec::new();
+                for (connection_addr, _connection) in &connections_changer.connections {
+                    if *connection_addr != src_addr {
+                        connection_addresses.push(*connection_addr);
+                    }
+                }
+                for addr in connection_addresses {
+                    let raw_data_result = create_player_enter_push(
+                        &self.protocols,
+                        player_name.to_string(),
+                        player_number.unwrap(),
+                        src_addr,
+                    );
+
+                    if raw_data_result.is_ok() {
+                        let mut data = vec![job_index, job_single_byte];
+                        data.append(&mut raw_data_result.unwrap());
+
+                        self.send_to_socket(addr, &data, &mut connections_changer);
+                    }
+                }
                 /*
                 println!("request");
                 if raw_data.len() < 4 {
