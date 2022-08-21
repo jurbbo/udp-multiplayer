@@ -176,19 +176,20 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                 (*events_changer).on_data_push_action(raw_data);
             }
             ServerJob::DataPush => {
-                println!("received");
-                if raw_data.len() < 3 {
+                if raw_data.len() < 2 {
                     let mut jobs_changer = self.jobs.lock().unwrap();
                     (*jobs_changer).packages_failed += 1;
                     let mut events_changer = self.events.lock().unwrap();
                     (*events_changer).on_error();
                     return;
                 }
-                let player = raw_data[2];
+                let player = raw_data[0];
+                raw_data.remove(0);
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_data_push_received(player, raw_data);
             }
             ServerJob::DataResponse => {
+                /*
                 println!("request");
                 if raw_data.len() < 4 {
                     let mut jobs_changer = self.jobs.lock().unwrap();
@@ -197,11 +198,13 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                     (*events_changer).on_error();
                     return;
                 }
-                let player = raw_data[2];
+                */
+                let player = raw_data[0];
                 let mut events_changer = self.events.lock().unwrap();
                 (*events_changer).on_data_push_received(player, raw_data);
             }
             ServerJob::PlayerCreatedResponse => {
+                /*
                 println!("enter");
                 if raw_data.len() < 4 {
                     let mut jobs_changer = self.jobs.lock().unwrap();
