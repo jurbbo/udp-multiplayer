@@ -172,8 +172,8 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
             ServerJob::NoServerAction => {}
 
             ServerJob::DataPushDoneResponse => {
-                let mut events_changer = self.events.lock().unwrap();
-                (*events_changer).on_data_push_action(raw_data);
+                //let mut events_changer = self.events.lock().unwrap();
+                //(*events_changer).on_data_push_action(raw_data);
             }
             ServerJob::DataPush => {
                 if raw_data.len() < 2 {
