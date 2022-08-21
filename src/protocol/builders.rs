@@ -136,6 +136,19 @@ impl RawDataBuilder {
 
         Ok(self)
     }
+
+    pub fn test_byte_length(
+        self,
+        structures: &HashMap<String, DataStructure>,
+    ) -> Result<RawDataBuilder, ProtocolError> {
+        if datahelpers::get_protocol_total_length(structures)
+            != self.raw_data.as_ref().unwrap().len()
+        {
+            return Err(ProtocolError::DataLengthMismatch);
+        }
+        Ok(self)
+    }
+
     pub fn get_raw_data(&mut self) -> Vec<u8> {
         let raw_data_maybe = self.raw_data.take();
         raw_data_maybe.unwrap()
