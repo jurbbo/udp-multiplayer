@@ -4,8 +4,8 @@ pub mod socketlistener;
 
 use crate::server::server::Server;
 
-pub fn run(ip: String, port: String) {
-    let mut server = Server::new(5);
+pub fn run(ip: String, port: String, thread_count: u8) {
+    let mut server = Server::new(thread_count);
     let result = server.connect(ip + ":" + &port);
     if result.is_err() {
         println!("IP / port failed...");
@@ -18,5 +18,5 @@ pub fn run(ip: String, port: String) {
 
 pub fn test_server() {
     println!("Server starting...");
-    run("127.0.0.1".to_string(), "11111".to_string());
+    run("localhost".to_string(), "11111".to_string(), 3);
 }
