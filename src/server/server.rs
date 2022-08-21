@@ -1,3 +1,4 @@
+use crate::protocol::Protocol;
 use crate::requests::jobs::Jobs;
 use crate::server::connection::Connections;
 use crate::server::socketlistener::ServerSocketListener;
@@ -13,6 +14,7 @@ use std::{thread, time};
 
 pub struct Server {
     jobs: Arc<Mutex<Jobs>>,
+    protocols: Arc<Protocol>,
     time_to_die: Arc<AtomicBool>,
     error_state_previous: Arc<AtomicBool>,
     error_state_current: Arc<AtomicBool>,
@@ -31,6 +33,7 @@ impl Server {
     ) -> Server {
         Server {
             jobs: Arc::new(Mutex::new(Jobs::new())),
+            protocols: Arc::new(Protocol::new()),
             time_to_die: Arc::new(AtomicBool::new(false)),
             error_state_previous: Arc::new(AtomicBool::new(false)),
             error_state_current: Arc::new(AtomicBool::new(false)),
@@ -147,6 +150,7 @@ impl Server {
             let socket = Arc::clone(socket);
             let connections = Arc::clone(&self.connections);
             let time_to_die = Arc::clone(&self.time_to_die);
+            let protocols = Arc::clone(&self.protocols);
             let error_state_current = Arc::clone(&self.error_state_current);
             let error_state_previous = Arc::clone(&self.error_state_previous);
             let jobs = Arc::clone(&self.jobs);
@@ -156,6 +160,7 @@ impl Server {
                 (ServerSocketListener::new(
                     connections,
                     jobs,
+                    protocols,
                     socket,
                     time_to_die,
                     error_state_current,
