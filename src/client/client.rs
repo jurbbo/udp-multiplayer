@@ -1,5 +1,6 @@
 use crate::client::socketlistener::SocketListener;
 use crate::client::RequestEvents;
+use crate::protocol::Protocol;
 use crate::requests::jobs::Job;
 use crate::requests::jobs::Jobs;
 use crate::requests::jobtype::JobType;
@@ -22,6 +23,7 @@ trait SendRequest {
 pub struct Client {
     jobs: Arc<Mutex<Jobs>>,
     time_to_die: Arc<AtomicBool>,
+    protocols: Arc<Protocol>,
     error_state_previous: Arc<AtomicBool>,
     error_state_current: Arc<AtomicBool>,
     error_state_start_time: Option<Instant>,
@@ -39,6 +41,7 @@ impl Client {
         Client {
             jobs: Arc::new(Mutex::new(Jobs::new())),
             time_to_die: Arc::new(AtomicBool::new(false)),
+            protocols: Arc::new(Protocol::new()),
             error_state_previous: Arc::new(AtomicBool::new(false)),
             error_state_current: Arc::new(AtomicBool::new(false)),
             error_state_start_time: None,
@@ -108,6 +111,7 @@ impl Client {
             // clone structs for next thread
             let jobs = Arc::clone(&self.jobs);
             let socket = Arc::clone(&socket);
+            let protocols = Arc::clone(&self.protocols);
             let time_to_die = Arc::clone(&self.time_to_die);
             let events = Arc::clone(&events);
             let error_state_current = Arc::clone(&self.error_state_current);
@@ -120,6 +124,7 @@ impl Client {
                 (SocketListener::new(
                     &jobs,
                     &socket,
+                    protocols,
                     &time_to_die,
                     &events,
                     &error_state_current,
