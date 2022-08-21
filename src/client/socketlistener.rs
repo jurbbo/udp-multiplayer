@@ -94,7 +94,7 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
 
     // Read socket, blocking function, return None is socket read fails for connection error.
     fn read_socket(&self) -> Option<Vec<u8>> {
-        let mut buf = [0; 10];
+        let mut buf = [0; 200];
 
         let result = self.socket.recv_from(&mut buf);
         if result.is_err() {
