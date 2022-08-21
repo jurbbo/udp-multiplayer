@@ -2,25 +2,54 @@ pub type JobType = (ServerJob, ClientJob);
 
 #[derive(Clone)]
 pub enum ClientJob {
-    NoClientAction,
-    DataPushRequest,
-    DataRequest,
-    PlayerEnterRequest,
-    PlayerLeaveRequest,
-    PingRequest,
+    NoClientAction = 0,
+    DataPushRequest = 1,
+    DataRequest = 2,
+    PlayerEnterRequest = 3,
+    PlayerLeaveRequest = 4,
+    PingRequest = 5,
 }
 
 #[derive(Clone)]
 pub enum ServerJob {
-    NoServerAction,
-    DataPush,
-    DataPushDoneResponse,
-    DataResponse,
-    PlayerCreatedResponse,
-    PlayerEnterPush,
-    PlayerLeaveResponse,
-    PlayerLeavePush,
-    PongResponse,
+    NoServerAction = 0,
+    DataPush = 1,
+    DataPushDoneResponse = 2,
+    DataResponse = 3,
+    PlayerCreatedResponse = 4,
+    PlayerEnterPush = 5,
+    PlayerLeaveResponse = 6,
+    PlayerLeavePush = 7,
+    PongResponse = 8,
+}
+
+impl ClientJob {
+    pub fn as_string() -> Vec<&'static str> {
+        vec![
+            "NoClientAction",
+            "DataPushRequest",
+            "DataRequest",
+            "PlayerEnterRequest",
+            "PlayerLeaveRequest",
+            "PingRequest",
+        ]
+    }
+}
+
+impl ServerJob {
+    pub fn as_string() -> Vec<&'static str> {
+        vec![
+            "NoServerAction",
+            "DataPush",
+            "DataPushDoneResponse",
+            "DataResponse",
+            "PlayerCreatedResponse",
+            "PlayerEnterPush",
+            "PlayerLeaveResponse",
+            "PlayerLeavePush",
+            "PongResponse",
+        ]
+    }
 }
 
 pub fn get_job_bytes(job_type: &JobType) -> (u8, u8) {
