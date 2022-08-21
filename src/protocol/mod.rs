@@ -28,6 +28,24 @@ pub enum ProtocolError {
     VecLengthMustMatchStructureLength,
 }
 
+impl Display for ProtocolError {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match *self {
+            ProtocolError::ProtocolNotFound => write!(f, "Protocol not found."),
+            ProtocolError::BytesMustAddedOrderly => write!(f, "Bytes must be added orderly. Find right structure order printing the structure."),
+            ProtocolError::DataStructureNotFound => write!(f, "Protocol structure not found. Try printing protocol structures to found right name."),
+            ProtocolError::DataStructureNameMustBeUnique => write!(f, "Data structure name already exists."),
+            ProtocolError::DataLengthMismatch => write!(f, "Data length is not valid. Data missing?"),
+            ProtocolError::ArrayStructureEmpty => write!(f, "Array structure is empty."),
+            ProtocolError::ArrayRawDataLengthMismatch => write!(f, "Array data length is not valid. Data missing?"),
+            ProtocolError::InvalidRawData => write!(f, "Raw data is invalid."),
+            ProtocolError::WrongStructureDataType => write!(f, "Wrong structure data type. Print structure and check types."),
+            ProtocolError::DynamicTypeBeLastItem => write!(f, "Dynamic data must be last."),
+            ProtocolError::VecLengthMustMatchStructureLength => write!(f, "Vector length does not match with structure length."),
+        }
+    }
+}
+
 type ProtocolsT = HashMap<String, DataStructureT>;
 
 pub struct Protocol {
