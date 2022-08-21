@@ -1,3 +1,4 @@
+use crate::protocol::datahelpers;
 use crate::protocol::datastructure::{DataStructure, DataType};
 use crate::protocol::ProtocolError;
 use std::collections::HashMap;
@@ -7,6 +8,10 @@ pub struct RawDataBuilder {
     array_start_byte: usize,
     is_array: bool,
 }
+
+const mask_u16_first: u16 = 0b1111_1111_0000_0000;
+const mask_u16_second: u16 = 0b0000_0000_1111_1111;
+
 impl RawDataBuilder {
     pub fn new(is_array: bool) -> RawDataBuilder {
         RawDataBuilder {
@@ -71,6 +76,27 @@ impl RawDataBuilder {
         self.raw_data.as_mut().unwrap().append(&mut raw_data);
 
         Ok(self)
+    }
+
+    pub fn add_u16_data(
+        self,
+        structure_name: &str,
+        structures: &HashMap<String, DataStructure>,
+        data_u16: u16,
+    ) -> Result<RawDataBuilder, ProtocolError> {
+        let first_byte = ((data_u16 & mask_u16_first) >> 8) as u8;
+        let second_byte = (data_u16 & mask_u16_second) as u8;
+
+        Ok(self.add_vec_data(structure_name, structures, vec![first_byte, second_byte])?)
+    }
+
+    pub fn add_u8_data(
+        self,
+        structure_name: &str,
+        structures: &HashMap<String, DataStructure>,
+        data_u8: u8,
+    ) -> Result<RawDataBuilder, ProtocolError> {
+        Ok(self.add_vec_data(structure_name, structures, vec![data_u8])?)
     }
 
     pub fn add_string_data(
