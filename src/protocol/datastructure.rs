@@ -120,6 +120,20 @@ impl<'protocol> StructuredArray<'protocol> {
         Ok(data)
     }
 
+    pub fn get_u8_data(&self, structure_name: &str) -> Result<u8, ProtocolError> {
+        let data = self.get_vec_data(structure_name)?;
+        Ok(data[0])
+    }
+
+    pub fn get_u16_data(&self, structure_name: &str) -> Result<u16, ProtocolError> {
+        let data = self.get_vec_data(structure_name)?;
+        if data.len() != 2 {
+            return Err(ProtocolError::DataLengthMismatch);
+        }
+        let data_as_u16 = ((data[0] as u16) << 8) | data[1] as u16;
+        Ok(data_as_u16)
+    }
+
     pub fn get_string_data(&self, structure_name: &str) -> Result<String, ProtocolError> {
         let string_vec = self.get_vec_data(structure_name)?;
 
@@ -283,6 +297,20 @@ impl<'protocol> StructuredData<'protocol> {
         let data =
             self.raw_data[structure.start_byte..structure.start_byte + structure.length].to_vec();
         Ok(data)
+    }
+
+    // If data has more than 1 byte, returns first byte of byte vector.
+    pub fn get_u8_data(&self, structure_name: &str) -> Result<u8, ProtocolError> {
+        let data = self.get_vec_data(structure_name)?;
+        Ok(data[0])
+    }
+    pub fn get_u16_data(&self, structure_name: &str) -> Result<u16, ProtocolError> {
+        let data = self.get_vec_data(structure_name)?;
+        if data.len() != 2 {
+            return Err(ProtocolError::DataLengthMismatch);
+        }
+        let data_as_u16 = ((data[0] as u16) << 8) | data[1] as u16;
+        Ok(data_as_u16)
     }
 
     pub fn get_iterable_array(
