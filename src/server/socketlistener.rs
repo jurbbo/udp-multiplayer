@@ -21,6 +21,7 @@ use std::time::Duration;
 
 pub struct ServerSocketListener {
     connections: Arc<Mutex<Connections>>,
+    protocols: Arc<Protocol>,
     jobs: Arc<Mutex<Jobs>>,
     time_to_die: Arc<AtomicBool>,
     socket: Arc<UdpSocket>,
@@ -32,6 +33,7 @@ impl ServerSocketListener {
     pub fn new(
         connections: Arc<Mutex<Connections>>,
         jobs: Arc<Mutex<Jobs>>,
+        protocols: Arc<Protocol>,
         socket: Arc<UdpSocket>,
         time_to_die: Arc<AtomicBool>,
         error_state_current: Arc<AtomicBool>,
@@ -39,6 +41,7 @@ impl ServerSocketListener {
     ) -> ServerSocketListener {
         ServerSocketListener {
             jobs: jobs,
+            protocols: protocols,
             socket: socket,
             time_to_die: time_to_die,
             error_state_current: error_state_current,
