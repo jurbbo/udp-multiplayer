@@ -305,12 +305,12 @@ impl ServerSocketListener {
                 let raw_len = raw_data.len();
 
                 if raw_len < 4 {
-                    println!("package too short.");
+                    println!("invalid package.");
 
                     self.fail_package();
                     let job: JobType = (ServerJob::PlayerCreatedResponse, client_request_type);
                     let job_single_byte = get_job_single_byte(&job);
-                    let data = [job_index, job_single_byte, 101];
+                    let data = [job_index, job_single_byte, 100];
                     self.send_to_socket(src_addr, &data, &mut connections_changer);
                     return;
                 }
@@ -324,7 +324,7 @@ impl ServerSocketListener {
                     self.fail_package();
                     let job: JobType = (ServerJob::PlayerCreatedResponse, client_request_type);
                     let job_single_byte = get_job_single_byte(&job);
-                    let data = [job_index, job_single_byte, 100];
+                    let data = [job_index, job_single_byte, 101];
                     self.send_to_socket(src_addr, &data, &mut connections_changer);
                     return;
                 }
