@@ -230,7 +230,6 @@ impl ServerSocketListener {
             ClientJob::NoClientAction => {}
 
             ClientJob::DataPushRequest => {
-                let mut connections_changer = self.connections.lock().unwrap();
                 let job: JobType = (ServerJob::DataPush, client_request_type.clone());
                 let job_single_byte = get_job_single_byte(&job);
 
