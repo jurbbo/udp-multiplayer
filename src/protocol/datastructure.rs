@@ -137,9 +137,18 @@ impl<'protocol> StructuredArray<'protocol> {
     pub fn get_string_data(&self, structure_name: &str) -> Result<String, ProtocolError> {
         let string_vec = self.get_vec_data(structure_name)?;
 
-        let data_string = String::from_utf8_lossy(&string_vec);
+        // since string length is static in raw data byte vec,
+        // and empty string place is marked with vec of zeros,
+        // there might be item's with 0 value. If these are not removed,
+        // it might create bugs in some cases.
+        let string_vec_cleaned = string_vec
+            .into_iter()
+            .filter(|item| item != &(0 as u8))
+            .collect::<Vec<u8>>();
 
-        Ok(data_string.into_owned())
+        let data_string = String::from_utf8_lossy(&string_vec_cleaned);
+
+        Ok(data_string.to_string())
     }
 }
 
@@ -346,7 +355,16 @@ impl<'protocol> StructuredData<'protocol> {
     pub fn get_string_data(&self, structure_name: &str) -> Result<String, ProtocolError> {
         let string_vec = self.get_vec_data(structure_name)?;
 
-        let data_string = String::from_utf8_lossy(&string_vec);
+        // since string length is static in raw data byte vec,
+        // and empty string place is marked with vec of zeros,
+        // there might be item's with 0 value. If these are not removed,
+        // it might create bugs in some cases.
+        let string_vec_cleaned = string_vec
+            .into_iter()
+            .filter(|item| item != &(0 as u8))
+            .collect::<Vec<u8>>();
+
+        let data_string = String::from_utf8_lossy(&string_vec_cleaned);
 
         Ok(data_string.into_owned())
     }
