@@ -4,6 +4,8 @@ use crate::server::connection::Connections;
 use crate::server::socketlistener::ServerSocketListener;
 use std::io::Error;
 use std::io::ErrorKind;
+use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -16,6 +18,9 @@ pub struct Server {
     jobs: Arc<Mutex<Jobs>>,
     protocols: Arc<Protocol>,
     time_to_die: Arc<AtomicBool>,
+    is_running: Arc<AtomicBool>,
+    ip: Option<IpAddr>,
+    port: Option<u16>,
     error_state_previous: Arc<AtomicBool>,
     error_state_current: Arc<AtomicBool>,
     error_state_start_time: Option<Instant>,
@@ -34,12 +39,15 @@ impl Server {
         Server {
             jobs: Arc::new(Mutex::new(Jobs::new())),
             protocols: Arc::new(Protocol::new()),
+            is_running: Arc::new(AtomicBool::new(false)),
             time_to_die: Arc::new(AtomicBool::new(false)),
             error_state_previous: Arc::new(AtomicBool::new(false)),
             error_state_current: Arc::new(AtomicBool::new(false)),
             error_state_start_time: None,
             thread_handles: None,
             socket: None,
+            ip: None,
+            port: None,
             threads_count: threads_count,
             //handle_data_cb: Arc::new(Mutex::new(handle_data_cb)),
             connections: Arc::new(Mutex::new(Connections::new())),
@@ -49,44 +57,104 @@ impl Server {
     // Run until Ctrl-C in pressed. This is blocking!
     pub fn run(&mut self) {
         let result = self.init_listeners();
+        if result.is_err() {
+            println!("{}", result.unwrap_err());
+            return;
+        }
         self.init_status();
-
-        let running = Arc::new(AtomicBool::new(true));
-        let r = running.clone();
-        ctrlc::set_handler(move || {
-            r.store(false, Ordering::SeqCst);
-        })
-        .expect("Error setting Ctrl-C handler");
-        while running.load(Ordering::SeqCst) {}
-        println!("");
-        println!("Graceful shutdown...");
-        self.die();
+        self.is_running.store(true, Ordering::SeqCst);
     }
     // Takes ownership of thread handles and joins threads.
     // UDP listenings and job handling ends.
-    pub fn die(&mut self) {
+    pub fn die(&mut self) -> bool {
         self.time_to_die.store(true, Ordering::SeqCst);
 
-        let handles = self.thread_handles.take();
-        if handles.is_none() {
-            return;
+        match self.thread_killer() {
+            None => return false,
+            Some(thread_killer_handle) => {
+                let handles = self.thread_handles.take();
+                if handles.is_none() {
+                    return true;
+                }
+                handles.unwrap().into_iter().for_each(|handle| {
+                    print!("Closing '{}' ...", handle.thread().name().unwrap());
+                    handle.join().unwrap();
+                    println!("success.")
+                });
+                self.is_running.store(false, Ordering::SeqCst);
+                thread_killer_handle.join().unwrap();
+
+                return true;
+            }
         }
-        handles.unwrap().into_iter().for_each(|handle| {
-            handle.join().unwrap();
-        });
+    }
+
+    pub fn get_port(&self) -> Option<u16> {
+        self.port
+    }
+
+    // let send empty request to server, so that blocking socket listener
+    // will stop blocking, and server can close.
+    pub fn thread_killer(&self) -> Option<JoinHandle<()>> {
+        let mut ip_string: String = "".to_string();
+        if self.ip.is_none() || self.port.is_none() {
+            return None;
+        }
+        if let IpAddr::V4(ipv4) = self.ip.unwrap() {
+            ip_string = format!(
+                "{}.{}.{}.{}",
+                ipv4.octets()[0],
+                ipv4.octets()[1],
+                ipv4.octets()[2],
+                ipv4.octets()[3]
+            );
+        }
+
+        let mut thread_killer_handle: Option<JoinHandle<()>> = None;
+
+        for port in 49152..65535 {
+            match UdpSocket::bind(format!("{}:{}", ip_string.to_string(), port)) {
+                Err(_socket) => {}
+                Ok(socket) => {
+                    let socket_arc = Arc::new(socket);
+                    let local_server_ip = Arc::new(self.ip.unwrap());
+                    let local_server_port = Arc::new(self.port.unwrap());
+                    let is_running = Arc::clone(&self.is_running);
+
+                    let thread_killer_thread =
+                        thread::Builder::new().name(format!("Thread killer thread"));
+                    thread_killer_handle = Some(
+                        thread_killer_thread
+                            .spawn(move || loop {
+                                thread::sleep(time::Duration::from_millis(50));
+                                let _result = socket_arc.send_to(
+                                    &[0, 0, 0],
+                                    SocketAddr::new(*local_server_ip, *local_server_port),
+                                );
+                                if is_running.load(Ordering::SeqCst) == false {
+                                    break;
+                                }
+                            })
+                            .unwrap(),
+                    );
+                    break;
+                }
+            }
+        }
+
+        return thread_killer_handle;
+    }
+
+    pub fn is_running(&self) -> bool {
+        return self.is_running.load(Ordering::SeqCst);
     }
 
     pub fn connect(&mut self, local_ip: String) -> Result<(), std::io::Error> {
-        let socket_result = UdpSocket::bind(local_ip);
-        if socket_result.is_err() {
-            let err = socket_result.unwrap_err();
-            return Err(err);
-        }
-
-        let socket = socket_result.unwrap();
-
+        let socket = UdpSocket::bind(local_ip)?;
+        let socket_addr = socket.local_addr()?;
+        self.ip = Some(socket_addr.ip());
+        self.port = Some(socket_addr.port());
         self.socket = Some(Arc::new(socket));
-
         Ok(())
     }
 
@@ -105,7 +173,8 @@ impl Server {
         let connections = Arc::clone(&self.connections);
         let time_to_die = Arc::clone(&self.time_to_die);
 
-        let handle = thread::spawn(move || loop {
+        let status_thread = thread::Builder::new().name(format!("Status thread"));
+        let handle = status_thread.spawn(move || loop {
             for _count in 1..100 {
                 thread::sleep(pause_time);
                 if time_to_die.load(Ordering::SeqCst) {
@@ -133,7 +202,7 @@ impl Server {
             }
         });
 
-        self.push_handles(vec![handle]);
+        self.push_handles(vec![handle.unwrap()]);
     }
 
     pub fn init_listeners(&mut self) -> Result<(), std::io::Error> {
@@ -146,7 +215,7 @@ impl Server {
         let socket = self.socket.as_ref().unwrap();
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
-        for _handle_index in 1..self.threads_count {
+        for handle_index in 1..self.threads_count {
             let socket = Arc::clone(socket);
             let connections = Arc::clone(&self.connections);
             let time_to_die = Arc::clone(&self.time_to_die);
@@ -156,7 +225,9 @@ impl Server {
             let jobs = Arc::clone(&self.jobs);
 
             // worker for listening server data starts here
-            let handle = thread::spawn(move || {
+            let listener_thread =
+                thread::Builder::new().name(format!("Listener thread {}", handle_index));
+            let handle = listener_thread.spawn(move || {
                 (ServerSocketListener::new(
                     connections,
                     jobs,
@@ -169,7 +240,7 @@ impl Server {
                 .run()
             });
 
-            handles.push(handle);
+            handles.push(handle.unwrap());
         }
         self.push_handles(handles);
         Ok(())
