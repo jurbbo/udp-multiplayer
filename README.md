@@ -18,3 +18,6 @@
 * data fetch from server
 * player leave
 * custom protocol
+
+## Known bugs
+* Multiple clients in test case refuse to die.
