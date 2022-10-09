@@ -199,89 +199,141 @@ impl Client {
             return;
         }
 
+        if self.job_action_channel_tx.is_none() {
+            return;
+        }
+
         let socket = self.socket.as_ref().unwrap();
 
-        //let events_sharable = Arc::new(events);
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
-        for _handle_index in 1..self.threads_count {
-            // clone structs for next thread
-            let jobs = Arc::clone(&self.jobs);
-            let socket = Arc::clone(&socket);
-            let protocols = Arc::clone(&self.protocols);
-            let time_to_die = Arc::clone(&self.time_to_die);
-            let events = Arc::clone(&events);
-            let error_state_current = Arc::clone(&self.error_state_current);
-            let error_state_previous = Arc::clone(&self.error_state_previous);
+        // clone stuff for next thread
+        let socket = Arc::clone(&socket);
+        let protocols = Arc::clone(&self.protocols);
+        let time_to_die = Arc::clone(&self.time_to_die);
+        let events = Arc::clone(&events);
+        let error_state_current = Arc::clone(&self.error_state_current);
+        let error_state_previous = Arc::clone(&self.error_state_previous);
+        let job_channel_tx = self.job_action_channel_tx.as_ref().unwrap().clone();
 
-            //let handle_data_cb = Arc::clone(&self.handle_data_cb);
+        //let handle_data_cb = Arc::clone(&self.handle_data_cb);
 
-            // worker for listening server data starts here
-            let handle = thread::spawn(move || {
-                (SocketListener::new(
-                    &jobs,
-                    &socket,
-                    protocols,
-                    &time_to_die,
-                    &events,
-                    &error_state_current,
-                    &error_state_previous,
-                ))
-                .init_listener()
-            });
-
-            handles.push(handle);
+        // worker for listening server data starts here
+        let listener_thread = thread::Builder::new().name(format!("Listener thread"));
+        match listener_thread.spawn(move || {
+            (SocketListener::new(
+                job_channel_tx,
+                socket,
+                protocols,
+                time_to_die,
+                events,
+                error_state_current,
+                error_state_previous,
+            ))
+            .init_listener()
+        }) {
+            Ok(handle) => handles.push(handle),
+            Err(e) => {
+                println!("{}", e);
+            }
         }
         self.push_handles(handles);
     }
 
-    // Job handler checks if there is problematic jobs
-    pub fn init_job_handler(&mut self) {
+    pub fn mark_client_start(&self) {
+        self.is_running.store(true, Ordering::SeqCst);
+    }
+
+    pub fn init_sender(&mut self) {
         if self.socket.is_none() {
             return;
         }
-        let socket = self.socket.as_ref().unwrap();
 
+        if self.job_action_channel_tx.is_none() || self.socket_send_channel_rx.is_none() {
+            panic!("Channels not created");
+        }
+
+        let socket = self.socket.as_ref().unwrap();
+        // Receiver will be moved to SocketSender thread.
+        let socket_send_channel_rx = self.socket_send_channel_rx.take().unwrap();
+
+        // other stuff to thread.
         let socket = Arc::clone(&socket);
+        let time_to_die = Arc::clone(&self.time_to_die);
+        let error_state_current = Arc::clone(&self.error_state_current);
+        let error_state_previous = Arc::clone(&self.error_state_previous);
+        let job_channel_tx = self.job_action_channel_tx.as_ref().unwrap().clone();
+
+        // Thread creation with name.
+        let sender_thread = thread::Builder::new().name(format!("Client sender thread"));
+        match sender_thread.spawn(move || {
+            (SocketSender::new(
+                socket,
+                socket_send_channel_rx,
+                job_channel_tx,
+                time_to_die,
+                error_state_current,
+                error_state_previous,
+            ))
+            .init()
+        }) {
+            Ok(handle) => self.push_handles(vec![handle]),
+            Err(e) => {
+                println!("{}", e);
+            }
+        }
+    }
+
+    pub fn init_job_channel_consumer(&mut self) {
+        if self.job_action_channel_rx.is_none() {
+            panic!("Channels not created");
+        }
+
+        let time_to_die = Arc::clone(&self.time_to_die);
+        let jobs = Arc::clone(&self.jobs);
+
+        // Receiver will be moved to Job Channel Consumer thread.
+        let job_action_channel_rx = self.job_action_channel_rx.take().unwrap();
+
+        // Action handler to add / remove jobs. Uses job_channel to communicate
+        // with other threads.
+        let job_thread = thread::Builder::new().name(format!("Job action consumer thread"));
+        let handle_maybe = job_thread.spawn(move || {
+            jobworkers::run_job_channel_consumer(jobs, job_action_channel_rx, time_to_die)
+        });
+        match handle_maybe {
+            Ok(handle) => self.push_handles(vec![handle]),
+            Err(e) => {
+                panic!("{}", e);
+            }
+        };
+    }
+
+    // Job handler checks if there is problematic jobs
+    pub fn init_job_handler(&mut self) {
+        if self.socket_send_channel_tx.is_none() {
+            println!("Socket channel not found");
+            self.error_state_current.store(true, Ordering::SeqCst);
+            return;
+        }
+
+        // let's take clone only of jobs hadhmap inside jobs struct.
         let jobs = Arc::clone(&self.jobs);
         let time_to_die = Arc::clone(&self.time_to_die);
-        // worker for reading server answer starts here
-        let handle = vec![thread::spawn(move || loop {
-            // break if server is closing...
-            thread::sleep(Duration::from_micros(1000));
-            if time_to_die.load(Ordering::SeqCst) {
-                break;
-            }
+        let job_channel_tx = self.socket_send_channel_tx.as_ref().unwrap().clone();
 
-            let mut jobs_changer = jobs.lock().unwrap();
-            let now = Instant::now();
-            let mut failed_job_indexes = Vec::<u8>::new();
-            for (job_index, job) in &mut (*jobs_changer).jobs {
-                if job.is_pending_request_late(now) {
-                    if job.requested_count < 10 {
-                        // resend failed message
-                        println!("PACKED FAILED. RESEND NUMBER {}!", job.requested_count);
-                        job.reset_start_instant();
-                        job.requested_count += 1;
-                        let result = socket.send(&job.raw_data);
-                        // if connection fails, remove job.
-                        if result.is_err() {
-                            job.pending = false;
-                            failed_job_indexes.push(*job_index);
-                        }
-                    // Too many retryes, let's cancel the job.
-                    } else {
-                        job.pending = false;
-                        failed_job_indexes.push(*job_index);
-                    }
-                }
+        // uses socket send channel to send re request, when job is not received in given time.
+        // worker to handle packages
+        let job_thread = thread::Builder::new().name(format!("Job worker thread"));
+        let handle_maybe = job_thread
+            .spawn(move || jobworkers::run_job_handler(jobs, job_channel_tx, time_to_die));
+        match handle_maybe {
+            Ok(handle) => {
+                self.push_handles(vec![handle]);
             }
-            // remove failed jobs from index
-            for failed_job_index in failed_job_indexes {
-                println!("index remover {}", failed_job_index);
-                (*jobs_changer).jobs.remove(&failed_job_index);
+            Err(e) => {
+                panic!("Thread is not running ... {}", e);
             }
-        })];
-        self.push_handles(handle);
+        }
     }
 
     fn push_handles(&mut self, mut handles_to_append: Vec<JoinHandle<()>>) {
