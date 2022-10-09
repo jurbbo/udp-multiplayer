@@ -123,23 +123,67 @@ impl Client {
         }
     }
 
-    // Takes ownership of thread handles and joins threads.
-    // UDP listenings and job handling ends.
-    pub fn die(&mut self) {
-        self.time_to_die.store(true, Ordering::SeqCst);
+    pub fn init_channels(&mut self) {
+        // Creation of Socket Send Channel
+        let (socket_send_channel_tx, socket_send_channel_rx) = channel::<(Vec<u8>, Job)>();
+        self.socket_send_channel_tx = Some(socket_send_channel_tx);
+        self.socket_send_channel_rx = Some(socket_send_channel_rx);
 
-        let handles = self.thread_handles.take();
-        if handles.is_none() {
-            return;
+        // Creation of Job Handler Action Channel
+        let (job_handler_channel_tx, job_handler_channel_rx) =
+            channel::<(JobAction, u8, Option<Job>)>();
+        self.job_action_channel_tx = Some(job_handler_channel_tx);
+        self.job_action_channel_rx = Some(job_handler_channel_rx);
+    }
+
+    // Takes ownership of thread handles and joins threads.
+    // UDP listening and job handling ends. Uses thread killer from helpers
+    // to activate blocking channel receivers and UDP listener.
+    pub fn die(&mut self) -> bool {
+        println!(
+            "Closing client running on {}:{}",
+            self.ip.unwrap(),
+            self.port.unwrap()
+        );
+        if self.job_action_channel_tx.is_none() || self.socket_send_channel_tx.is_none() {
+            panic!("Closing client, but channels are not activated. This should not be possible???!?!?");
         }
-        handles.unwrap().into_iter().for_each(|handle| {
-            handle.join().unwrap();
-        });
+
+        /*
+        let job_channel_tx = self.job_action_channel_tx.as_ref().unwrap().clone();
+        let socket_send_channel_tx = self.socket_send_channel_tx.as_ref().unwrap().clone();
+        let is_running = self.get_is_running_atomic().clone();
+
+        let channel_killer_handle =
+            client_channel_killer(job_channel_tx, socket_send_channel_tx, is_running);
+        */
+        match thread_killer(self) {
+            None => return false,
+            Some(thread_killer_handle) => match self.thread_handles.take() {
+                None => return true,
+                Some(handles) => {
+                    self.time_to_die.store(true, Ordering::SeqCst);
+
+                    handles.into_iter().for_each(|handle| {
+                        if handle.thread().name().unwrap() == "Listener thread" {
+                            print!("Closing '{}' ...", handle.thread().name().unwrap());
+                            handle.join().unwrap();
+                            println!("success.")
+                        }
+                    });
+                    self.is_running.store(false, Ordering::SeqCst);
+                    print!("Closing helpers: Thread killer, ");
+                    thread_killer_handle.join().unwrap();
+                    //println!("channel killer.");
+                    //channel_killer_handle.unwrap().join().unwrap();
+                    return true;
+                }
+            },
+        }
     }
 
     pub fn get_job_ping(&self) -> f64 {
-        let jobs_changer = self.jobs.lock().unwrap();
-        (*jobs_changer).job_finish_time_average
+        self.jobs.get_ping()
     }
 
     pub fn is_in_error_state(&self) -> bool {
