@@ -1,11 +1,12 @@
+use crate::helpers::threadkiller::thread_killer;
 use crate::protocol::Protocol;
 use crate::requests::jobs::Jobs;
 use crate::server::connection::Connections;
 use crate::server::socketlistener::ServerSocketListener;
+use crate::socket::SocketCombatible;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::net::IpAddr;
-use std::net::SocketAddr;
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -31,6 +32,23 @@ pub struct Server {
     //handle_data_cb: Arc<Mutex<fn(job_type: JobType, raw_data: &mut [u8])>>,
 }
 
+impl SocketCombatible for Server {
+    fn get_port(&self) -> Option<u16> {
+        self.port
+    }
+
+    fn get_ip(&self) -> Option<IpAddr> {
+        self.ip
+    }
+
+    fn is_running(&self) -> bool {
+        return self.is_running.load(Ordering::SeqCst);
+    }
+    fn get_is_running_atomic(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.is_running)
+    }
+}
+
 impl Server {
     pub fn new(
         threads_count: u8,
@@ -40,21 +58,20 @@ impl Server {
             jobs: Arc::new(Mutex::new(Jobs::new())),
             protocols: Arc::new(Protocol::new()),
             is_running: Arc::new(AtomicBool::new(false)),
+            ip: None,
+            port: None,
             time_to_die: Arc::new(AtomicBool::new(false)),
             error_state_previous: Arc::new(AtomicBool::new(false)),
             error_state_current: Arc::new(AtomicBool::new(false)),
             error_state_start_time: None,
             thread_handles: None,
             socket: None,
-            ip: None,
-            port: None,
             threads_count: threads_count,
             //handle_data_cb: Arc::new(Mutex::new(handle_data_cb)),
             connections: Arc::new(Mutex::new(Connections::new())),
         }
     }
 
-    // Run until Ctrl-C in pressed. This is blocking!
     pub fn run(&mut self) {
         let result = self.init_listeners();
         if result.is_err() {
@@ -69,7 +86,7 @@ impl Server {
     pub fn die(&mut self) -> bool {
         self.time_to_die.store(true, Ordering::SeqCst);
 
-        match self.thread_killer() {
+        match thread_killer(self) {
             None => return false,
             Some(thread_killer_handle) => {
                 let handles = self.thread_handles.take();
@@ -87,66 +104,6 @@ impl Server {
                 return true;
             }
         }
-    }
-
-    pub fn get_port(&self) -> Option<u16> {
-        self.port
-    }
-
-    // let send empty request to server, so that blocking socket listener
-    // will stop blocking, and server can close.
-    pub fn thread_killer(&self) -> Option<JoinHandle<()>> {
-        let mut ip_string: String = "".to_string();
-        if self.ip.is_none() || self.port.is_none() {
-            return None;
-        }
-        if let IpAddr::V4(ipv4) = self.ip.unwrap() {
-            ip_string = format!(
-                "{}.{}.{}.{}",
-                ipv4.octets()[0],
-                ipv4.octets()[1],
-                ipv4.octets()[2],
-                ipv4.octets()[3]
-            );
-        }
-
-        let mut thread_killer_handle: Option<JoinHandle<()>> = None;
-
-        for port in 49152..65535 {
-            match UdpSocket::bind(format!("{}:{}", ip_string.to_string(), port)) {
-                Err(_socket) => {}
-                Ok(socket) => {
-                    let socket_arc = Arc::new(socket);
-                    let local_server_ip = Arc::new(self.ip.unwrap());
-                    let local_server_port = Arc::new(self.port.unwrap());
-                    let is_running = Arc::clone(&self.is_running);
-
-                    let thread_killer_thread =
-                        thread::Builder::new().name(format!("Thread killer thread"));
-                    thread_killer_handle = Some(
-                        thread_killer_thread
-                            .spawn(move || loop {
-                                thread::sleep(time::Duration::from_millis(50));
-                                let _result = socket_arc.send_to(
-                                    &[0, 0, 0],
-                                    SocketAddr::new(*local_server_ip, *local_server_port),
-                                );
-                                if is_running.load(Ordering::SeqCst) == false {
-                                    break;
-                                }
-                            })
-                            .unwrap(),
-                    );
-                    break;
-                }
-            }
-        }
-
-        return thread_killer_handle;
-    }
-
-    pub fn is_running(&self) -> bool {
-        return self.is_running.load(Ordering::SeqCst);
     }
 
     pub fn connect(&mut self, local_ip: String) -> Result<(), std::io::Error> {

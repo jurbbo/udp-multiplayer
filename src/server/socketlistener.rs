@@ -4,9 +4,9 @@ use crate::protocol::Protocol;
 use crate::requests::jobs::Jobs;
 use crate::requests::jobtype::get_job_single_byte;
 use crate::requests::jobtype::get_job_type;
-use crate::requests::jobtype::ClientJob;
-use crate::requests::jobtype::JobType;
-use crate::requests::jobtype::ServerJob;
+use crate::requests::ClientJob;
+use crate::requests::JobType;
+use crate::requests::ServerJob;
 use crate::server::connection::Connections;
 use std::net::SocketAddr;
 use std::net::UdpSocket;
@@ -144,8 +144,8 @@ impl ServerSocketListener {
 
     fn get_index_and_type(&self, raw_data: &Vec<u8>) -> Option<(u8, JobType)> {
         if raw_data.len() < 2 {
-            let mut jobs_changer = self.jobs.lock().unwrap();
-            (*jobs_changer).packages_failed += 1;
+            //let mut jobs_changer = self.jobs.lock().unwrap();
+            //(*jobs_changer).packages_failed += 1;
             return None;
         }
         let index = raw_data[0];
@@ -158,7 +158,7 @@ impl ServerSocketListener {
         let job_type = get_job_type(&server_client);
         if job_type.is_none() {
             let mut jobs_changer = self.jobs.lock().unwrap();
-            (*jobs_changer).packages_failed += 1;
+            //(*jobs_changer).packages_failed += 1;
             return None;
         }
         Some((index, job_type.unwrap()))
@@ -185,7 +185,7 @@ impl ServerSocketListener {
 
     fn fail_package(&self) {
         let mut jobs_changer = self.jobs.lock().unwrap();
-        (*jobs_changer).packages_failed += 1;
+        //(*jobs_changer).packages_failed += 1;
     }
 
     // Call implemented trait (RequestEvent) methods according
