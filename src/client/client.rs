@@ -1,28 +1,54 @@
 use crate::client::socketlistener::SocketListener;
+use crate::client::socketsender::SocketSender;
 use crate::client::RequestEvents;
+use crate::helpers::threadkiller::client_channel_killer;
+use crate::helpers::threadkiller::thread_killer;
 use crate::protocol::Protocol;
-use crate::requests::jobs::Job;
 use crate::requests::jobs::Jobs;
-use crate::requests::jobtype::JobType;
-use crate::requests::jobtype::{ClientJob, ServerJob};
+use crate::requests::jobworkers;
+use crate::requests::{ClientJob, Job, JobAction, JobType, ServerJob};
+use crate::socket::SocketCombatible;
 use std::io::Error;
 use std::io::ErrorKind;
+use std::net::IpAddr;
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
 use std::time::Instant;
 
+/*
 trait SendRequest {
     fn send_request(&self, job_type: JobType, raw_data: &mut Vec<u8>);
 }
+*/
 
 pub struct Client {
-    jobs: Arc<Mutex<Jobs>>,
+    // Multi transmitets txs for threads to share.
+    // Ownership of receivers is stored at init and then pushed to handler threads.
+    job_action_channel_tx: Option<Sender<(JobAction, u8, Option<Job>)>>,
+    job_action_channel_rx: Option<Receiver<(JobAction, u8, Option<Job>)>>,
+
+    socket_send_channel_tx: Option<Sender<(Vec<u8>, Job)>>,
+    socket_send_channel_rx: Option<Receiver<(Vec<u8>, Job)>>,
+
+    _socket_receive_channel_tx: Option<Sender<Vec<u8>>>,
+
+    jobs: Arc<Jobs>,
+    // Time_to_die variable to terminate threads.
     time_to_die: Arc<AtomicBool>,
+    // Is running implicates that socket is tied to address, and socket listener is activated.
+    is_running: Arc<AtomicBool>,
+    // Client IP
+    ip: Option<IpAddr>,
+    // Client port
+    port: Option<u16>,
+    // Default and custom protocols. If defaults are missing or mutated, client might fail.
     protocols: Arc<Protocol>,
     error_state_previous: Arc<AtomicBool>,
     error_state_current: Arc<AtomicBool>,
@@ -33,14 +59,43 @@ pub struct Client {
     //handle_data_cb: Arc<Mutex<fn(job_type: JobType, raw_data: &mut [u8])>>,
 }
 
+impl SocketCombatible for Client {
+    fn get_port(&self) -> Option<u16> {
+        self.port
+    }
+    fn get_ip(&self) -> Option<IpAddr> {
+        self.ip
+    }
+    fn is_running(&self) -> bool {
+        return self.is_running.load(Ordering::SeqCst);
+    }
+    fn get_is_running_atomic(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.is_running)
+    }
+}
+
 impl Client {
     pub fn new(
         threads_count: u8,
         //handle_data_cb: fn(job_type: JobType, raw_data: &mut [u8]),
     ) -> Client {
         Client {
-            jobs: Arc::new(Mutex::new(Jobs::new())),
+            // channels for thread to thread communication.
+            // constructor formats them as none, since channels
+            // are created in init functions.
+            socket_send_channel_tx: None,
+            socket_send_channel_rx: None,
+
+            _socket_receive_channel_tx: None,
+            job_action_channel_tx: None,
+            job_action_channel_rx: None,
+
+            // job data struct
+            jobs: Arc::new(Jobs::new()),
             time_to_die: Arc::new(AtomicBool::new(false)),
+            is_running: Arc::new(AtomicBool::new(false)),
+            ip: None,
+            port: None,
             protocols: Arc::new(Protocol::new()),
             error_state_previous: Arc::new(AtomicBool::new(false)),
             error_state_current: Arc::new(AtomicBool::new(false)),
@@ -203,37 +258,45 @@ impl Client {
         client_job_type: ClientJob,
         raw_data: &mut Vec<u8>,
     ) -> Result<(), std::io::Error> {
-        if self.socket.is_none() {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "Cannot send without activated socket. Hint: has port or ip address failed?",
-            ));
+        match &self.socket_send_channel_tx {
+            None => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    "Socket send channel has not been initialized.",
+                ));
+            }
+            Some(tx) => {
+                // Create a job to follow up server response.
+                // Job thread will ask to send new request if job fails.
+                let next_job_handle = self.jobs.get_next_job_handle();
+                let job_should_complite = (self.jobs.get_job_finish_time_average() * 5.0) as u128;
+                let job_type: JobType = (ServerJob::NoServerAction, client_job_type);
+
+                // let's add index and job type to a job.
+                let job = Job::new(next_job_handle, job_type, raw_data, job_should_complite);
+                // data has now index and job_type as 2 first bytes, rest is actual raw_data.
+                let data = job.get_raw_data();
+
+                // Job is inserted to Jobs via job_action_channel
+                // (*jobs_changer).jobs.insert(next_job_handle, job);
+                let job_action_channel_tx = self.job_action_channel_tx.as_ref().unwrap();
+                match job_action_channel_tx.send((
+                    JobAction::ADD,
+                    next_job_handle,
+                    Some(job.clone()),
+                )) {
+                    Err(e) => {
+                        println!("Job action channel hang up: {}", e);
+                    }
+                    Ok(()) => {}
+                }
+
+                let result = tx.send((data, job));
+                if result.is_ok() {
+                    return Ok(());
+                }
+                return Err(Error::new(ErrorKind::Other, "Send channel hang up."));
+            }
         }
-        let socket = self.socket.as_ref().unwrap();
-
-        // Create job to follow up server response. Send new request if job fails.
-        let mut jobs_changer = self.jobs.lock().unwrap();
-        let next_index = (*jobs_changer).get_next_index();
-        let job_should_complite = ((*jobs_changer).job_finish_time_average * 2.0) as u128;
-        let job_type: JobType = (ServerJob::NoServerAction, client_job_type);
-        let job = Job::new(next_index, job_type, raw_data, job_should_complite);
-
-        let data = job.get_raw_data();
-
-        // Job is inserted to Jobs
-        (*jobs_changer).jobs.insert(next_index, job);
-
-        let result = socket.send(&data);
-        if result.is_err() {
-            // let's remove just created job when there's an error.
-            (*jobs_changer).jobs.remove(&next_index);
-
-            return Err(Error::new(
-                ErrorKind::Other,
-                "UDP packet send failed. Connection problem?",
-            ));
-        }
-
-        Ok(())
     }
 }
