@@ -5,17 +5,19 @@ use crate::client::RequestEvents;
 use crate::client::UdpSocket;
 use crate::protocol::bithelpers::get_u8_from_bit_slice;
 use crate::protocol::Protocol;
-use crate::requests::jobs::Jobs;
 use crate::requests::jobtype::get_job_type;
-use crate::requests::jobtype::JobType;
-use crate::requests::jobtype::ServerJob;
+use crate::requests::Job;
+use crate::requests::JobAction;
+use crate::requests::{JobType, ServerJob};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
 pub struct SocketListener<S: 'static> {
-    jobs: Arc<Mutex<Jobs>>,
+    //jobs: Arc<Mutex<Jobs>>,
+    job_channel_tx: Sender<(JobAction, u8, Option<Job>)>,
     protocols: Arc<Protocol>,
     time_to_die: Arc<AtomicBool>,
     socket: Arc<UdpSocket>,
@@ -26,25 +28,26 @@ pub struct SocketListener<S: 'static> {
 
 impl<S: RequestEvents + Send + Sync> SocketListener<S> {
     pub fn new(
-        jobs: &Arc<Mutex<Jobs>>,
-        socket: &Arc<UdpSocket>,
+        job_channel_tx: Sender<(JobAction, u8, Option<Job>)>,
+        socket: Arc<UdpSocket>,
         protocols: Arc<Protocol>,
-        time_to_die: &Arc<AtomicBool>,
-        events: &Arc<Mutex<S>>,
-        error_state_current: &Arc<AtomicBool>,
-        error_state_previous: &Arc<AtomicBool>,
+        time_to_die: Arc<AtomicBool>,
+        events: Arc<Mutex<S>>,
+        error_state_current: Arc<AtomicBool>,
+        error_state_previous: Arc<AtomicBool>,
     ) -> SocketListener<S>
     where
         S: RequestEvents + Send + Sync,
     {
         SocketListener {
-            jobs: Arc::clone(jobs),
-            socket: Arc::clone(socket),
+            //jobs: jobs,
+            job_channel_tx: job_channel_tx,
+            socket: socket,
             protocols: protocols,
-            time_to_die: Arc::clone(time_to_die),
-            events: Arc::clone(events),
-            error_state_current: Arc::clone(error_state_current),
-            error_state_previous: Arc::clone(error_state_previous),
+            time_to_die: time_to_die,
+            events: events,
+            error_state_current: error_state_current,
+            error_state_previous: error_state_previous,
         }
     }
 
@@ -69,7 +72,6 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                 (*events_changer)
                     .on_connection_state_change(self.error_state_current.load(Ordering::SeqCst));
             }
-
             // Thread sleeps 1 second, if connection is lost...
             if raw_data_maybe.is_none() {
                 thread::sleep(Duration::new(1, 0));
@@ -77,6 +79,11 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
             }
             // Data is received, lets work on it.
             let raw_data = raw_data_maybe.unwrap();
+
+            // 5 zeroes comes from thread killer thread, no need for further analyse.
+            if raw_data.len() == 5 && (&raw_data).iter().all(|&item| item == 0) {
+                continue;
+            }
 
             let index_and_type_maybe = self.get_index_and_type(&raw_data);
 
@@ -92,10 +99,18 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
         }
     }
 
+    fn send_to_job_channel(&self, job_action: JobAction, job_handle: u8, job: Option<Job>) -> bool {
+        let result = self.job_channel_tx.send((job_action, job_handle, job));
+        if result.is_err() {
+            println!("Job channel reveicer hang up.");
+            return false;
+        }
+        true
+    }
+
     // Read socket, blocking function, return None is socket read fails for connection error.
     fn read_socket(&self) -> Option<Vec<u8>> {
         let mut buf = [0; 200];
-
         let result = self.socket.recv_from(&mut buf);
         if result.is_err() {
             self.error_state_current.store(true, Ordering::SeqCst);
@@ -114,8 +129,10 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
     fn get_index_and_type(&self, raw_data: &Vec<u8>) -> Option<(u8, JobType)> {
         // package is too short.
         if raw_data.len() < 2 {
-            let mut jobs_changer = self.jobs.lock().unwrap();
-            (*jobs_changer).packages_failed += 1;
+            // Fail package that has no job handle (using 0), and now raw_data to analyse (using None)
+            self.send_to_job_channel(JobAction::INCFAILED, 0, None);
+            //let mut jobs_changer = self.jobs.lock().unwrap();
+            //(*jobs_changer).packages_failed += 1;
             return None;
         }
         let index = raw_data[0];
@@ -128,8 +145,9 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
         let job_type = get_job_type(&server_client);
         // package is garbage, does not hold job information.
         if job_type.is_none() {
-            let mut jobs_changer = self.jobs.lock().unwrap();
-            (*jobs_changer).packages_failed += 1;
+            //let mut jobs_changer = self.jobs.lock().unwrap();
+            //(*jobs_changer).packages_failed += 1;
+            self.send_to_job_channel(JobAction::INCFAILED, 0, None);
             return None;
         }
         Some((index, job_type.unwrap()))
@@ -139,20 +157,24 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
     // what kind of (JobType) data is reveiced.
     fn create_request_event(
         &self,
-        job_index: u8,
+        job_handle: u8,
         server_response_type: ServerJob,
         mut raw_data: Vec<u8>,
     ) where
         S: RequestEvents + Send + Sync,
     {
-        let mut job_duration = Duration::new(0, 0);
+        let job_duration = Duration::new(0, 0);
 
         // Job handling for operations fired from client.
         match &server_response_type {
-            ServerJob::DataPush => { /* no job handling for server push operations */ }
+            ServerJob::DataPush => { /* no job handling for server originated push operations */ }
             ServerJob::PlayerEnterPush => { /* no job handling */ }
             ServerJob::PlayerLeavePush => {}
             __ => {
+                self.send_to_job_channel(JobAction::REMOVE, job_handle, None);
+                self.send_to_job_channel(JobAction::INCHANDLED, job_handle, None);
+
+                /*
                 let mut jobs_changer = self.jobs.lock().unwrap();
                 let job_maybe = (*jobs_changer).jobs.get_mut(&job_index);
                 if job_maybe.is_none() {
@@ -165,6 +187,7 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
                 job_duration = job.finish();
                 (*jobs_changer).add_finish_time(job_duration);
                 (*jobs_changer).packages_handled += 1;
+                */
             }
         }
 
@@ -177,8 +200,11 @@ impl<S: RequestEvents + Send + Sync> SocketListener<S> {
             }
             ServerJob::DataPush => {
                 if raw_data.len() < 2 {
+                    self.send_to_job_channel(JobAction::INCFAILED, 0, None);
+                    /*
                     let mut jobs_changer = self.jobs.lock().unwrap();
                     (*jobs_changer).packages_failed += 1;
+                    */
                     let mut events_changer = self.events.lock().unwrap();
                     (*events_changer).on_error();
                     return;
