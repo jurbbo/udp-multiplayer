@@ -108,13 +108,10 @@ impl Client {
     }
 
     pub fn connect(&mut self, local_ip: String, server_ip: String) -> Result<(), std::io::Error> {
-        let socket_result = UdpSocket::bind(local_ip);
-        if socket_result.is_err() {
-            let err = socket_result.unwrap_err();
-            return Err(err);
-        }
-
-        let socket = socket_result.unwrap();
+        let socket = UdpSocket::bind(local_ip)?;
+        let socket_addr = socket.local_addr()?;
+        self.ip = Some(socket_addr.ip());
+        self.port = Some(socket_addr.port());
         let connect_result = socket.connect(server_ip);
 
         match connect_result {
