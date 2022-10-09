@@ -1,6 +1,7 @@
 pub mod client;
 pub mod datahandlers;
 mod socketlistener;
+mod socketsender;
 
 use crate::client::client::Client;
 use crate::client::datahandlers::playercreatedresponse::PlayerCreatedServerError;
@@ -29,6 +30,13 @@ pub fn run<S: 'static>(client: &mut Client, events: Arc<Mutex<S>>)
 where
     S: RequestEvents + Send + Sync,
 {
+    // please note, that channels must be initialized first, since other threads need
+    // the channel rx and tx attributes.
+    client.init_channels();
+    client.init_sender();
     client.init_job_handler();
+    client.init_job_channel_consumer();
     client.init_listeners(events);
+    // started -->
+    client.mark_client_start();
 }
