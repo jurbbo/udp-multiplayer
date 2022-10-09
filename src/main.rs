@@ -22,5 +22,10 @@ fn main() {
         println!("UDP Multiplayer Client -- version {}", VERSION);
         testclient::testclient();
     }
+    if params.has_param("test".to_string()) {
+        println!("UDP Multiplayer test -- version {}", VERSION);
+        //tests::createplayerrequest::test_create_player_request_other_player_names();
+    }
+
     params.display_help();
 }
