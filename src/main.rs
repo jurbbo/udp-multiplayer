@@ -1,11 +1,13 @@
-//#[cfg(test)]
+#[cfg(test)]
 mod tests;
 
 mod client;
+mod helpers;
 mod params;
 mod protocol;
 mod requests;
 mod server;
+mod socket;
 mod testclient;
 use params::Params;
 
