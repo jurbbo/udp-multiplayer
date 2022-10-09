@@ -6,8 +6,8 @@ use crate::protocol::builders::DataStructuresFactory;
 use crate::protocol::datahelpers::get_protocol_total_length;
 use crate::protocol::datastructure::DataStructure;
 use crate::protocol::datastructure::DataType;
-use crate::requests::jobtype::ClientJob;
-use crate::requests::jobtype::ServerJob;
+use crate::requests::ClientJob;
+use crate::requests::ServerJob;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
