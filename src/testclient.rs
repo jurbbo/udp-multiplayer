@@ -8,8 +8,10 @@ use crate::protocol::builders::RawDataBuilder;
 use crate::protocol::datahelpers;
 use crate::protocol::datastructure::StructuredData;
 use crate::protocol::Protocol;
-use crate::requests::jobtype::ClientJob;
+use crate::requests::ClientJob;
 use std::io::stdin;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
@@ -261,31 +263,38 @@ pub fn testclient() {
         println!("Error.")
     }
 
-    loop {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    println!("Data string: ");
+    let mut data = String::new();
+    stdin().read_line(&mut data).expect("Shit");
+
+    while running.load(Ordering::SeqCst) {
+        thread::sleep(pause_time_duration);
         if client.is_in_error_state() {
-            //println!("Server is in error state...");
-            //thread::sleep(Duration::new(1, 0));
+            println!("server is in error state...");
+            thread::sleep(Duration::new(1, 0));
         }
 
-        thread::sleep(pause_time_duration);
         match stuff.trim().as_ref() {
             "q" => {
                 println!("graceful shutdown...");
                 break;
             }
             "a" => {
-                println!("Data string: ");
-                let mut data = String::new();
-                stdin().read_line(&mut data).expect("Shit");
                 let mut data_owned = data.trim().to_owned().as_bytes().to_vec();
 
-                let _result = client.send_request(ClientJob::DataPushRequest, &mut data_owned);
+                //let _result = client.send_request(ClientJob::DataPushRequest, &mut data_owned);
             }
             _ => {}
         }
     }
 
     println!("Exiting...");
-
     client.die();
 }
