@@ -98,7 +98,6 @@ pub fn run_job_channel_consumer(
                         match job_maybe {
                             None => {}
                             Some(job) => {
-                                println!("Job created");
                                 // job handle is created with next_job_handle fn,
                                 // when job instance is created
                                 jobs.insert_job(job_handle, job);
@@ -106,7 +105,6 @@ pub fn run_job_channel_consumer(
                         }
                     }
                     JobAction::REMOVE => {
-                        println!("job removed");
                         jobs.remove_job(job_handle);
                     }
                     JobAction::INCFAILED => {

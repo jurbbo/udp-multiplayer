@@ -41,11 +41,8 @@ impl<'protocol> Iterator for RawArrayData<'protocol> {
     type Item = StructuredArray<'protocol>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut item_start = (self.item_size_in_bytes) * self.iterator_index;
+        let item_start = (self.item_size_in_bytes) * self.iterator_index;
         let item_end = item_start + self.item_size_in_bytes;
-
-        println!("{}", item_start);
-        println!("{}", item_end);
 
         if self.raw_data.len() < item_end {
             return None;

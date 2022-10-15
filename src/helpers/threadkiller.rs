@@ -82,7 +82,6 @@ pub fn client_channel_killer(
         let mut is_job_action_channel_dead = false;
         loop {
             thread::sleep(time::Duration::from_millis(50));
-            println!("pöö");
 
             if !is_job_action_channel_dead {
                 is_job_action_channel_dead = kill_job_action_channel(&job_action_channel_tx);

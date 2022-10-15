@@ -287,7 +287,7 @@ pub fn testclient() {
                 break;
             }
             "a" => {
-                let mut data_owned = data.trim().to_owned().as_bytes().to_vec();
+                let _data_owned = data.trim().to_owned().as_bytes().to_vec();
 
                 //let _result = client.send_request(ClientJob::DataPushRequest, &mut data_owned);
             }

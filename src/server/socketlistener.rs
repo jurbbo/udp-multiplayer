@@ -251,8 +251,8 @@ impl ServerSocketListener {
                 // create return data and job single byte for DataPush.
                 let mut dynamic_data = raw_data[2..].to_vec();
 
-                let data_string = String::from_utf8_lossy(&dynamic_data);
-                println!("data {}", data_string);
+                // for debugging, remove if not used.
+                //let _data_string = String::from_utf8_lossy(&dynamic_data);
                 let mut data = vec![job_index, job_single_byte, player_number];
                 data.append(&mut dynamic_data);
 
