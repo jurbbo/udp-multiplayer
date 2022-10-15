@@ -18,7 +18,8 @@
 * data fetch from server
 * player leave
 * custom protocol
-* Ggez implementation
+* ggez implementation
+* More tests needed (for protocol builder, for job handling, for connection error state) 
 
 ## Known bugs
 * Multiple clients in test case refuse to die.
