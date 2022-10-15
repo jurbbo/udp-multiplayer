@@ -18,6 +18,10 @@
 * data fetch from server
 * player leave
 * custom protocol
+* Ggez implementation
 
 ## Known bugs
 * Multiple clients in test case refuse to die.
+
+## Join the project
+Contact jarkko.uro@gmail.com for more information.
