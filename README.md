@@ -1,4 +1,5 @@
-# UDP Multiplayer server and client
+# gum
+.. is Good UDP Multiplayer server and client
 
 * Event driven.
 * Reliable packet receiver.
